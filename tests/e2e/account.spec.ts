@@ -1,0 +1,127 @@
+import { ANA, BRUNO, apiLogin, expect, open, test, uiLogin } from './fixtures'
+
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+)
+
+test.describe('Perfil e carteiras', () => {
+  test('edição do perfil com validação e conflito', async ({ page }) => {
+    await open(page, '/')
+    await apiLogin(page, ANA)
+    await open(page, '/perfil')
+    const name = page.getByLabel('Nome', { exact: true })
+    await name.fill('A')
+    await page.getByRole('button', { name: 'Salvar alterações' }).click()
+    await expect(page.getByText('Informe pelo menos 2 caracteres')).toBeVisible()
+    await expect(name).toBeFocused()
+
+    await name.fill('Ana R. Souza')
+    await page.getByLabel('Nome de usuário').fill('bruno_lima')
+    await page.getByRole('button', { name: 'Salvar alterações' }).click()
+    await expect(page.getByText('Este nome de usuário já está em uso.')).toBeVisible()
+
+    await page.getByLabel('Nome de usuário').fill('ana_souza')
+    await page.getByLabel('Bio').fill('Nova bio de colecionadora.')
+    await page.getByRole('button', { name: 'Salvar alterações' }).click()
+    await expect(page.getByText('Perfil atualizado.')).toBeVisible()
+    await page.reload()
+    await expect(page.getByLabel('Nome', { exact: true })).toHaveValue('Ana R. Souza')
+    await expect(page.getByLabel('Bio')).toHaveValue('Nova bio de colecionadora.')
+  })
+
+  test('avatar válido e inválido', async ({ page }) => {
+    await open(page, '/')
+    await apiLogin(page, ANA)
+    await open(page, '/perfil')
+    await page.getByRole('tab', { name: 'Avatar' }).click()
+    const input = page.locator('#field-avatar')
+    await input.setInputFiles({ name: 'falso.png', mimeType: 'image/png', buffer: Buffer.from('não é uma imagem') })
+    await expect(page.getByText('Não foi possível ler esta imagem. Verifique se o arquivo é válido.')).toBeVisible()
+    await input.setInputFiles({ name: 'doc.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') })
+    await expect(page.getByText('Use uma imagem PNG, JPEG ou WebP.')).toBeVisible()
+
+    await input.setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: PNG_1X1 })
+    await expect(page.getByText('Avatar atualizado.')).toBeVisible()
+    await expect(page.getByRole('img', { name: `Avatar de ${ANA.name}` })).toBeVisible()
+    await page.reload()
+    await page.getByRole('tab', { name: 'Avatar' }).click()
+    await expect(page.getByRole('img', { name: `Avatar de ${ANA.name}` })).toBeVisible()
+    await page.getByRole('button', { name: 'Remover' }).click()
+    await expect(page.getByText('Avatar removido.')).toBeVisible()
+  })
+
+  test('alteração de senha com erro da API e novo login', async ({ page }) => {
+    await open(page, '/')
+    await apiLogin(page, BRUNO)
+    await open(page, '/perfil')
+    await page.getByRole('tab', { name: 'Senha' }).click()
+    await page.getByLabel('Senha atual').fill('incorreta1')
+    await page.getByLabel('Nova senha', { exact: true }).fill('NovaSenha2027')
+    await page.getByLabel('Confirmar nova senha').fill('NovaSenha2027')
+    await page.getByRole('button', { name: 'Alterar senha' }).click()
+    await expect(page.getByText('A senha atual está incorreta.')).toBeVisible()
+
+    await page.getByLabel('Senha atual').fill(BRUNO.password)
+    await page.getByLabel('Confirmar nova senha').fill('Diferente2027')
+    await page.getByRole('button', { name: 'Alterar senha' }).click()
+    await expect(page.getByText('As senhas não coincidem')).toBeVisible()
+
+    await page.getByLabel('Confirmar nova senha').fill('NovaSenha2027')
+    await page.getByRole('button', { name: 'Alterar senha' }).click()
+    await expect(page.getByText('Senha alterada. Outras sessões foram encerradas.')).toBeVisible()
+
+    await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Requested-With': 'jungle-web' } }))
+    await open(page, '/login')
+    await uiLogin(page, BRUNO)
+    await expect(page.getByText('E-mail ou senha incorretos.')).toBeVisible()
+    await uiLogin(page, { email: BRUNO.email, password: 'NovaSenha2027' })
+    await expect(page).toHaveURL(/\/$/)
+  })
+
+  test('cadastro e edição das carteiras principal e secundária', async ({ page }) => {
+    await open(page, '/')
+    await apiLogin(page, BRUNO)
+    await open(page, '/carteiras')
+    const primary = page.getByTestId('wallet-slot-primary')
+    await primary.getByRole('button', { name: 'Cadastrar carteira principal' }).click()
+    await primary.getByLabel('Apelido').fill('Minha MetaMask')
+    await primary.getByLabel('Endereço').fill('0x123')
+    await primary.getByRole('button', { name: 'Cadastrar carteira' }).click()
+    await expect(primary.getByText('Informe um endereço válido (0x seguido de 40 caracteres hexadecimais)')).toBeVisible()
+    await primary.getByLabel('Endereço').fill('0x52908400098527886E0F7030069857D2E4169EE7')
+    await primary.getByRole('button', { name: 'Cadastrar carteira' }).click()
+    await expect(page.getByText('Carteira cadastrada.')).toBeVisible()
+    await expect(primary).toContainText('Minha MetaMask')
+
+    const secondary = page.getByTestId('wallet-slot-secondary')
+    await secondary.getByRole('button', { name: 'Cadastrar carteira secundária' }).click()
+    await secondary.getByLabel('Apelido').fill('Reserva')
+    await secondary.getByLabel('Endereço').fill('0x52908400098527886E0F7030069857D2E4169EE7')
+    await secondary.getByRole('checkbox', { name: 'Ethereum' }).click()
+    await secondary.getByRole('button', { name: 'Cadastrar carteira' }).click()
+    await expect(secondary.getByText('Selecione ao menos uma rede')).toBeVisible()
+    await secondary.getByRole('checkbox', { name: 'Base' }).click()
+    await secondary.getByRole('button', { name: 'Cadastrar carteira' }).click()
+    await expect(secondary.getByText('Este endereço já está cadastrado na sua outra carteira.')).toBeVisible()
+    await secondary.getByLabel('Endereço').fill('0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe')
+    await secondary.getByRole('button', { name: 'Cadastrar carteira' }).click()
+    await expect(secondary).toContainText('Reserva')
+
+    await primary.getByRole('button', { name: 'Editar' }).click()
+    await primary.getByLabel('Apelido').fill('MetaMask renomeada')
+    await primary.getByRole('button', { name: 'Salvar carteira' }).click()
+    await expect(page.getByText('Carteira atualizada.')).toBeVisible()
+    await page.reload()
+    await expect(page.getByTestId('wallet-slot-primary')).toContainText('MetaMask renomeada')
+    await expect(page.getByTestId('wallet-slot-secondary')).toContainText('0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe')
+  })
+
+  test('acesso negado pela API exibe erro sem expor dados', async ({ page }) => {
+    await open(page, '/')
+    await apiLogin(page, ANA)
+    await open(page, '/perfil', { scenario: 'unauthorized' })
+    await expect(page.getByText('Você não tem permissão para acessar este recurso.')).toBeVisible()
+    await expect(page.getByLabel('Nome', { exact: true })).toHaveCount(0)
+  })
+})

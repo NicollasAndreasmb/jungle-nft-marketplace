@@ -1,0 +1,30 @@
+node_modules/
+dist/
+*.local
+.env
+.env.*.local
+coverage/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+lighthouse/reports/*.tmp
+.DS_Store
+*.log
+.vercel
+
+# Claude Code: local settings, sessions, memories, worktrees and personal instructions
+.claude/
+CLAUDE.local.md
+
+# Other AI coding agents: local chat history, caches and session state
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v*/
+.specstory/
+.cursor/mcp.json
+
+# Temporary files left by agents and scripts
+*.tmp
+*.tmp.*
+.tmp/
